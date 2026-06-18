@@ -1,0 +1,6 @@
+{
+  "transport": "ble",
+  "ble_name": "CodexFace",
+  "ble_timeout": 8,
+  "serial_port": "/dev/cu.usbmodemXXXX"
+}

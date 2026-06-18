@@ -1,30 +1,9 @@
 #!/usr/bin/env python3
-import glob
-import os
 import sys
-import time
-
-import serial
+from codex_face_transport import send_command
 
 
 VALID_MODES = ("idle", "working", "attention", "blocked", "off")
-BAUD = 115200
-DEFAULT_PORT = "/dev/cu.usbmodem42CEA4F10A401"
-
-
-def find_port() -> str:
-    configured = os.environ.get("MAGICLICK_PORT") or os.environ.get("CODEX_FACE_PORT")
-    if configured:
-        return configured
-
-    if os.path.exists(DEFAULT_PORT):
-        return DEFAULT_PORT
-
-    ports = sorted(glob.glob("/dev/cu.usbmodem*"))
-    if ports:
-        return ports[0]
-
-    raise FileNotFoundError("No MagiClick serial port found")
 
 
 def build_command(argv):
@@ -50,13 +29,9 @@ def main() -> int:
         )
         return 2
 
-    port = find_port()
-    with serial.Serial(port, BAUD, timeout=0.5, write_timeout=0.5) as ser:
-        time.sleep(0.25)
-        ser.write((command + "\n").encode("utf-8"))
-        ser.flush()
+    target = send_command(command)
 
-    print(f"Sent '{command}' -> {port}")
+    print(f"Sent '{command}' -> {target}")
     return 0
 
 

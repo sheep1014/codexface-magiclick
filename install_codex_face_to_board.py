@@ -29,6 +29,7 @@ BLE_LIB_KEEP = {
     "adafruit_ble/services/nordic.mpy",
     "adafruit_ble/uuid/__init__.mpy",
 }
+APP_PATH = "/app/CodexFace.py"
 
 
 def timestamp() -> str:
@@ -200,9 +201,34 @@ def copy_via_raw_repl(port: str) -> None:
         for board_path, local_path in uploads:
             upload_file_via_raw_repl(ser, local_path, board_path)
         try:
-            exec_paste(ser, "import supervisor\nsupervisor.reload()\n", timeout=3.0)
+            exec_paste(
+                ser,
+                "import supervisor\n"
+                f"supervisor.set_next_code_file({APP_PATH!r})\n"
+                "supervisor.reload()\n",
+                timeout=3.0,
+            )
         except Exception:
             pass
+
+
+def activate_installed_app(port: str) -> None:
+    with serial.Serial(port, 115200, timeout=0.4, write_timeout=1) as ser:
+        enter_friendly_repl(ser)
+        try:
+            exec_paste(
+                ser,
+                "import supervisor\n"
+                f"supervisor.set_next_code_file({APP_PATH!r})\n"
+                "print('NEXT_OK')\n"
+                "supervisor.reload()\n",
+                timeout=4.0,
+            )
+        except RuntimeError as exc:
+            # A successful reload exits before friendly REPL returns.
+            message = str(exc)
+            if "Paste execution did not finish:" not in message and "soft reboot" not in message:
+                raise
 
 
 def iter_ble_lib_uploads():
@@ -301,6 +327,12 @@ def main() -> int:
     if MOUNT.exists():
         try:
             copy_via_mount()
+            try:
+                port = find_port()
+                activate_installed_app(port)
+                print(f"Activated {APP_PATH} on {port}")
+            except Exception as exc:
+                print(f"Installed files, but could not auto-launch {APP_PATH}: {exc}")
             return 0
         except OSError as exc:
             mount_error = exc
@@ -314,6 +346,11 @@ def main() -> int:
 
     try:
         copy_via_raw_repl(port)
+        try:
+            activate_installed_app(port)
+            print(f"Activated {APP_PATH} on {port}")
+        except Exception as exc:
+            print(f"Installed via raw REPL, but could not auto-launch {APP_PATH}: {exc}")
         print(f"Installed via raw REPL on {port}")
         return 0
     except Exception as exc:

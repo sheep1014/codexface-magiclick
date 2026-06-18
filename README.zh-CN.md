@@ -7,7 +7,7 @@
 - 5 个动态状态表情：`idle`、`working`、`attention`、`blocked`、`off`
 - 支持浏览器通过 BLE 连接 Nordic UART 控制
 - 支持 USB Serial 作为安装和调试通道
-- 自带一个网页管理页，可切状态、发文案、改配色
+- 自带一个网页管理页，可切状态、发文案、按状态改配色
 - 支持 Codex hooks 自动驱动表情变化
 
 ![CodexFace 预览](./codex_faces_preview.png)
@@ -58,7 +58,14 @@ python3 install_codex_face_to_board.py
 - 把 `codex_status.py` 写到板子的 `/app/CodexFace.py`
 - 把 BLE 需要的 `.mpy` 文件写到 `/lib/adafruit_ble/...`
 
+对于带启动器的 MagiClick 固件，安装脚本还会尽量自动把“下次启动应用”切到 `/app/CodexFace.py`。
+
 如果 `CIRCUITPY` 盘符是只读的，安装脚本会自动回退到串口 REPL 模式，并尝试把板载文件系统重新挂载为可写后再上传。
+如果板子装完后还是停在启动器或 REPL，可以手动执行：
+
+```bash
+python3 launch_codex_face_now.py
+```
 
 ## 打开管理页
 
@@ -78,7 +85,7 @@ python3 install_codex_face_to_board.py
 - 连接 USB 串口
 - 切换状态
 - 发送一行短文案
-- 调整 `bg`、`feature`、`accent`、`title`、`warn`、`sweat` 配色
+- 分状态调整 `bg`、`feature`、`accent`、`title`、`warn`、`sweat` 配色
 
 ## 浏览器支持和跨电脑直连
 
@@ -123,6 +130,9 @@ python3 install_codex_face_to_board.py
 
 - `palette`
 - `palette reset`
+- `palette working`
+- `palette working reset`
+- `palette working bg=#F08F31 feature=#161311 accent=#FFD08B title=#FFF0DE warn=#FFD166 sweat=#A3E6FF`
 - `palette bg=#EC7E1D feature=#161311 accent=#A95010 title=#F7C28E warn=#FFD166 sweat=#A3E6FF`
 - `color feature #161311`
 
@@ -162,6 +172,16 @@ export MAGICLICK_PORT=/dev/cu.usbmodemXXXX
 python3 install_codex_hooks.py
 ```
 
+如果你希望 Codex hooks 通过蓝牙控制摆件，确认 `~/.codex-face.json` 里是：
+
+```json
+{
+  "transport": "ble",
+  "ble_name": "CodexFace",
+  "ble_timeout": 8
+}
+```
+
 这个脚本会：
 
 - 把 `codex_face_hook.py` 复制到 `~/.codex/hooks/agent_face_hook.py`
@@ -199,4 +219,3 @@ python3 -m venv .venv-esptool
 ## 许可证
 
 MIT
-

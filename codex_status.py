@@ -72,6 +72,42 @@ display.root_group = group
 
 VALID_MODES = ("idle", "working", "attention", "blocked", "off")
 MODE_INDEX = {name: idx for idx, name in enumerate(VALID_MODES)}
+DEFAULT_MODE_THEMES = {
+    "idle": dict(DEFAULT_THEME),
+    "working": {
+        "bg": 0xF08F31,
+        "feature": 0x161311,
+        "accent": 0xFFD08B,
+        "title": 0xFFF0DE,
+        "warn": 0xFFD166,
+        "sweat": 0xA3E6FF,
+    },
+    "attention": {
+        "bg": 0xE0A135,
+        "feature": 0x161311,
+        "accent": 0xF8D39E,
+        "title": 0xFFF4E2,
+        "warn": 0xFFE08A,
+        "sweat": 0xA3E6FF,
+    },
+    "blocked": {
+        "bg": 0xC9692D,
+        "feature": 0x161311,
+        "accent": 0xF0B17E,
+        "title": 0xFFE7D0,
+        "warn": 0xFFD166,
+        "sweat": 0xA3E6FF,
+    },
+    "off": {
+        "bg": 0x241711,
+        "feature": 0xE8D7C7,
+        "accent": 0x5A3521,
+        "title": 0xA88773,
+        "warn": 0xFFD166,
+        "sweat": 0xA3E6FF,
+    },
+}
+mode_themes = {mode: dict(DEFAULT_MODE_THEMES[mode]) for mode in VALID_MODES}
 
 current_mode = "idle"
 info_text = ""
@@ -124,38 +160,54 @@ def parse_hex_color(value):
         return None
 
 
-def apply_theme():
-    palette[BG] = current_theme["bg"]
-    palette[BG_DARK] = darken(current_theme["bg"])
-    palette[FEATURE] = current_theme["feature"]
-    palette[ACCENT] = current_theme["accent"]
-    palette[WARN] = current_theme["warn"]
-    palette[SWEAT] = current_theme["sweat"]
-    title_label.color = current_theme["title"]
-    link_label.color = current_theme["title"]
-    info_label.color = current_theme["feature"]
+def theme_for_mode(mode):
+    if mode in mode_themes:
+        return mode_themes[mode]
+    return mode_themes["idle"]
 
 
-def set_theme_value(name, color):
+def apply_theme(mode=None):
+    theme = theme_for_mode(mode or current_mode)
+    palette[BG] = theme["bg"]
+    palette[BG_DARK] = darken(theme["bg"])
+    palette[FEATURE] = theme["feature"]
+    palette[ACCENT] = theme["accent"]
+    palette[WARN] = theme["warn"]
+    palette[SWEAT] = theme["sweat"]
+    title_label.color = theme["title"]
+    link_label.color = theme["title"]
+    info_label.color = theme["feature"]
+
+
+def set_theme_value(name, color, mode=None):
     if name not in COLOR_KEYS or color is None:
         return False
-    current_theme[name] = color
-    apply_theme()
+    target_mode = mode or current_mode
+    theme_for_mode(target_mode)[name] = color
+    if target_mode == current_mode:
+        apply_theme()
     return True
 
 
-def reset_theme():
+def reset_theme(mode=None):
+    target_mode = mode or current_mode
     for key in COLOR_KEYS:
-        current_theme[key] = DEFAULT_THEME[key]
-    apply_theme()
+        theme_for_mode(target_mode)[key] = DEFAULT_MODE_THEMES[target_mode][key]
+    if target_mode == current_mode:
+        apply_theme()
 
 
-def palette_line():
-    parts = ["%s=%s" % (name, color_to_hex(current_theme[name])) for name in COLOR_KEYS]
+def palette_line(mode=None):
+    target_mode = mode or current_mode
+    theme = theme_for_mode(target_mode)
+    parts = ["mode=%s" % target_mode]
+    parts.extend("%s=%s" % (name, color_to_hex(theme[name])) for name in COLOR_KEYS)
     return "PALETTE\t" + "\t".join(parts)
 
 
-def apply_palette_tokens(tokens):
+def apply_palette_tokens(tokens, mode=None):
+    target_mode = mode or current_mode
+    theme = theme_for_mode(target_mode)
     changed = False
     for token in tokens:
         if "=" not in token:
@@ -164,11 +216,26 @@ def apply_palette_tokens(tokens):
         name = name.strip().lower()
         color = parse_hex_color(raw)
         if name in COLOR_KEYS and color is not None:
-            current_theme[name] = color
+            theme[name] = color
             changed = True
     if changed:
-        apply_theme()
+        if target_mode == current_mode:
+            apply_theme()
     return changed
+
+
+def parse_palette_target(tokens):
+    target_mode = current_mode
+    remaining = list(tokens)
+    if remaining:
+        first = remaining[0].lower()
+        if first == "mode" and len(remaining) >= 2 and remaining[1].lower() in MODE_INDEX:
+            target_mode = remaining[1].lower()
+            remaining = remaining[2:]
+        elif first in MODE_INDEX:
+            target_mode = first
+            remaining = remaining[1:]
+    return target_mode, remaining
 
 
 def fill(color):
@@ -274,14 +341,15 @@ def draw_idle(phase):
 
 def draw_working(phase):
     bob = int(math.sin(phase / 16.0) * 1.0)
-    scan = ((phase % 16) // 4) - 2
+    scan = phase % 6
     draw_background(phase)
-    draw_eye_bar(25, 42 + bob, 12, 27)
-    draw_eye_bar(91, 42 + bob, 12, 27)
-    rect(28 + scan, 49 + bob, 3, 9, BG)
-    rect(94 + scan, 49 + bob, 3, 9, BG)
-    draw_small_mouth(94 + bob, -1)
-    rect(47, 103, 34, 3, FEATURE)
+    draw_eye_bar(22, 42 + bob, 10, 26)
+    draw_eye_bar(96, 42 + bob, 10, 26)
+    rect(24 + scan, 49 + bob, 2, 8, BG)
+    rect(98 - scan, 49 + bob, 2, 8, BG)
+    draw_flat_mouth(95 + bob, 12)
+    rect(46, 28, 18, 2, ACCENT)
+    rect(68, 28, 14, 2, ACCENT)
 
 
 def draw_attention(phase):
@@ -331,11 +399,19 @@ def draw_face(mode, phase):
         draw_off(phase)
 
 
+def draw_scene(mode, phase):
+    title_label.text = "CODEX"
+    refresh_link_label()
+    info_label.text = info_text
+    draw_face(mode, phase)
+
+
 def set_mode(mode):
     global current_mode
     if mode in MODE_INDEX:
         current_mode = mode
         display.brightness = 0.45 if mode == "off" else 1.0
+        apply_theme()
 
 
 def set_info(text):
@@ -421,11 +497,14 @@ def apply_command(command, source="serial"):
 
     if lower.startswith("palette ") or lower.startswith("colors "):
         tokens = command.split()[1:]
-        if tokens and tokens[0].lower() == "reset":
-            reset_theme()
-            send_ble_line(palette_line())
-        elif apply_palette_tokens(tokens):
-            send_ble_line(palette_line())
+        target_mode, tokens = parse_palette_target(tokens)
+        if not tokens:
+            send_ble_line(palette_line(target_mode))
+        elif tokens and tokens[0].lower() == "reset":
+            reset_theme(target_mode)
+            send_ble_line(palette_line(target_mode))
+        elif apply_palette_tokens(tokens, target_mode):
+            send_ble_line(palette_line(target_mode))
         return
 
     if lower.startswith("color "):
@@ -503,10 +582,9 @@ def consume_ble_command():
             ble_buffer += char
 
 
-apply_theme()
 set_mode("idle")
 refresh_link_label()
-draw_face(current_mode, frame)
+draw_scene(current_mode, frame)
 display.refresh()
 
 while True:
@@ -531,5 +609,5 @@ while True:
     if now - last_frame >= 0.07:
         frame += 1
         last_frame = now
-        draw_face(current_mode, frame)
+        draw_scene(current_mode, frame)
         display.refresh()

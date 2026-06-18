@@ -7,7 +7,7 @@ Turn a MagiClick ESP32-S3 desktop toy into a Codex status face with:
 - 5 animated states: `idle`, `working`, `attention`, `blocked`, `off`
 - BLE control in the browser through Nordic UART
 - USB serial control for setup and debugging
-- a browser console with live preview, text overlay, and color palette presets
+- a browser console with live preview, text overlay, palette presets, and per-state colors
 - Codex hooks that automatically switch the face based on session activity
 
 ![CodexFace preview](./codex_faces_preview.png)
@@ -58,7 +58,14 @@ This writes:
 - `codex_status.py` to `/app/CodexFace.py`
 - the required BLE `.mpy` files to `/lib/adafruit_ble/...`
 
+On MagiClick builds that boot into a launcher, the installer also tries to switch the next app to `/app/CodexFace.py` automatically.
+
 If the CIRCUITPY drive mounts read-only, the installer falls back to the serial REPL path and remounts the device filesystem writable before uploading.
+If the board still comes up in the launcher or REPL, run:
+
+```bash
+python3 launch_codex_face_now.py
+```
 
 ## Open the management page
 
@@ -78,7 +85,7 @@ The page supports:
 - USB serial connect
 - state switching
 - one-line text overlay
-- palette editing for `bg`, `feature`, `accent`, `title`, `warn`, and `sweat`
+- per-state palette editing for `bg`, `feature`, `accent`, `title`, `warn`, and `sweat`
 
 ## Browser support and direct connect
 
@@ -123,6 +130,9 @@ Palette commands:
 
 - `palette`
 - `palette reset`
+- `palette working`
+- `palette working reset`
+- `palette working bg=#F08F31 feature=#161311 accent=#FFD08B title=#FFF0DE warn=#FFD166 sweat=#A3E6FF`
 - `palette bg=#EC7E1D feature=#161311 accent=#A95010 title=#F7C28E warn=#FFD166 sweat=#A3E6FF`
 - `color feature #161311`
 
@@ -162,6 +172,16 @@ Install the hook config:
 
 ```bash
 python3 install_codex_hooks.py
+```
+
+For BLE-based hooks, make sure `~/.codex-face.json` contains:
+
+```json
+{
+  "transport": "ble",
+  "ble_name": "CodexFace",
+  "ble_timeout": 8
+}
 ```
 
 This will:

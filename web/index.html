@@ -211,6 +211,7 @@
       }
 
       .palette-toolbar,
+      .mode-tabs,
       .presets,
       .palette-grid {
         display: grid;
@@ -219,6 +220,10 @@
 
       .palette-toolbar {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .mode-tabs {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
       }
 
       .presets {
@@ -395,6 +400,8 @@
               <button id="resetPaletteBtn" class="ghost">恢复默认</button>
             </div>
 
+            <div id="paletteModeButtons" class="mode-tabs"></div>
+
             <div class="presets" id="presetButtons"></div>
 
             <div class="palette-grid">
@@ -424,7 +431,7 @@
               </label>
             </div>
 
-            <p class="tiny">颜色会实时更新预览，点“应用配色”后下发到设备。当前版本重启后会恢复默认色。</p>
+            <p id="paletteModeHint" class="tiny">当前正在编辑 Idle 状态的颜色。颜色会实时更新预览，点“应用配色”后才会下发到设备。当前版本重启后会恢复默认色。</p>
 
             <p class="tiny">
               蓝牙模式需要浏览器支持 `Web Bluetooth`，USB 模式需要支持 `Web Serial`。在 `http://127.0.0.1` 打开时两者都可用。
@@ -460,6 +467,42 @@
         title: "#F7C28E",
         warn: "#FFD166",
         sweat: "#A3E6FF",
+      };
+
+      const DEFAULT_MODE_PALETTES = {
+        idle: { ...DEFAULT_COLORS },
+        working: {
+          bg: "#F08F31",
+          feature: "#161311",
+          accent: "#FFD08B",
+          title: "#FFF0DE",
+          warn: "#FFD166",
+          sweat: "#A3E6FF",
+        },
+        attention: {
+          bg: "#E0A135",
+          feature: "#161311",
+          accent: "#F8D39E",
+          title: "#FFF4E2",
+          warn: "#FFE08A",
+          sweat: "#A3E6FF",
+        },
+        blocked: {
+          bg: "#C9692D",
+          feature: "#161311",
+          accent: "#F0B17E",
+          title: "#FFE7D0",
+          warn: "#FFD166",
+          sweat: "#A3E6FF",
+        },
+        off: {
+          bg: "#241711",
+          feature: "#E8D7C7",
+          accent: "#5A3521",
+          title: "#A88773",
+          warn: "#FFD166",
+          sweat: "#A3E6FF",
+        },
       };
 
       const PRESET_PALETTES = [
@@ -510,6 +553,8 @@
       const ctx = canvas.getContext("2d");
       const stateButtons = document.getElementById("stateButtons");
       const presetButtons = document.getElementById("presetButtons");
+      const paletteModeButtons = document.getElementById("paletteModeButtons");
+      const paletteModeHint = document.getElementById("paletteModeHint");
       const connectBleBtn = document.getElementById("connectBleBtn");
       const connectUsbBtn = document.getElementById("connectUsbBtn");
       const disconnectBtn = document.getElementById("disconnectBtn");
@@ -538,10 +583,14 @@
       let bleTxCharacteristic = null;
       let bleBuffer = "";
       let currentMode = "idle";
+      let paletteMode = "idle";
       let currentInfo = "";
       let frame = 0;
 
-      const colors = { ...DEFAULT_COLORS, bgDark: "#D96C10" };
+      const modeThemes = Object.fromEntries(
+        MODES.map((mode) => [mode, { ...(DEFAULT_MODE_PALETTES[mode] || DEFAULT_COLORS) }]),
+      );
+      let renderColors = { ...modeThemes.idle, bgDark: darkenHex(modeThemes.idle.bg) };
 
       function normalizeHex(value, fallback = "#000000") {
         if (typeof value !== "string") {
@@ -579,48 +628,76 @@
         return COLOR_KEYS.map((key) => normalizeHex(source[key], DEFAULT_COLORS[key])).join("|");
       }
 
+      function themeForMode(mode) {
+        return modeThemes[mode] || modeThemes.idle;
+      }
+
+      function derivedTheme(mode) {
+        const theme = themeForMode(mode);
+        return {
+          ...theme,
+          bgDark: darkenHex(theme.bg),
+        };
+      }
+
       function syncColorInputs() {
+        const theme = themeForMode(paletteMode);
         COLOR_KEYS.forEach((key) => {
-          colorInputs[key].value = normalizeHex(colors[key], DEFAULT_COLORS[key]);
+          colorInputs[key].value = normalizeHex(theme[key], DEFAULT_COLORS[key]);
         });
       }
 
       function refreshPresetButtons() {
-        const activeSignature = paletteSignature(colors);
+        const activeSignature = paletteSignature(themeForMode(paletteMode));
         [...presetButtons.querySelectorAll("button")].forEach((button) => {
           button.classList.toggle("active", button.dataset.signature === activeSignature);
         });
       }
 
-      function applyPalette(nextColors = {}) {
+      function refreshPaletteModeButtons() {
+        [...paletteModeButtons.querySelectorAll("button")].forEach((button) => {
+          button.classList.toggle("active", button.dataset.mode === paletteMode);
+        });
+        paletteModeHint.textContent = `当前正在编辑 ${MODE_LABELS[paletteMode]} 状态的颜色。颜色会实时更新预览，点“应用配色”后才会下发到设备。当前版本重启后会恢复默认色。`;
+      }
+
+      function applyPalette(nextColors = {}, mode = paletteMode) {
+        const theme = themeForMode(mode);
         COLOR_KEYS.forEach((key) => {
           if (nextColors[key]) {
-            colors[key] = normalizeHex(nextColors[key], DEFAULT_COLORS[key]);
+            theme[key] = normalizeHex(nextColors[key], DEFAULT_COLORS[key]);
           }
         });
-        colors.bgDark = darkenHex(colors.bg);
-        syncColorInputs();
+        if (mode === paletteMode) {
+          syncColorInputs();
+        }
         refreshPresetButtons();
         renderFace();
       }
 
-      function buildPaletteCommand() {
-        return `palette ${COLOR_KEYS.map((key) => `${key}=${normalizeHex(colors[key], DEFAULT_COLORS[key])}`).join(" ")}`;
+      function buildPaletteCommand(mode = paletteMode) {
+        const theme = themeForMode(mode);
+        return `palette ${mode} ${COLOR_KEYS.map((key) => `${key}=${normalizeHex(theme[key], DEFAULT_COLORS[key])}`).join(" ")}`;
       }
 
       function parsePalettePayload(parts) {
         const nextColors = {};
+        let mode = null;
         parts.forEach((part) => {
           const [name, raw] = part.split("=");
           if (!name || !raw) {
             return;
           }
           const key = name.trim().toLowerCase();
+          if (key === "mode" && MODES.includes(raw.trim().toLowerCase())) {
+            mode = raw.trim().toLowerCase();
+            return;
+          }
           if (COLOR_KEYS.includes(key)) {
             nextColors[key] = normalizeHex(raw, DEFAULT_COLORS[key]);
           }
         });
-        return nextColors;
+        return { mode, colors: nextColors };
       }
 
       function log(message, tone = "") {
@@ -667,53 +744,53 @@
       }
 
       function drawBackground(dim = false) {
-        rect(0, 0, 128, 128, dim ? colors.bgDark : colors.bg);
+        rect(0, 0, 128, 128, dim ? renderColors.bgDark : renderColors.bg);
         if (!dim) {
-          rect(0, 0, 128, 3, colors.accent);
+          rect(0, 0, 128, 3, renderColors.accent);
         }
       }
 
       function drawEyeBar(x, y, w = 12, h = 28) {
-        rect(x, y, w, h, colors.feature);
+        rect(x, y, w, h, renderColors.feature);
       }
 
       function drawClosedEye(x, y, width = 16, slope = 0) {
-        line(x, y, x + width, y + slope, colors.feature, 4);
+        line(x, y, x + width, y + slope, renderColors.feature, 4);
       }
 
       function drawFlatMouth(y, width = 18) {
-        line(64 - width / 2, y, 64 + width / 2, y, colors.feature, 3);
+        line(64 - width / 2, y, 64 + width / 2, y, renderColors.feature, 3);
       }
 
       function drawSmallMouth(y, mood = 0) {
         if (mood > 0) {
-          line(56, y, 64, y + 2, colors.feature, 3);
-          line(64, y + 2, 72, y, colors.feature, 3);
+          line(56, y, 64, y + 2, renderColors.feature, 3);
+          line(64, y + 2, 72, y, renderColors.feature, 3);
           return;
         }
         if (mood < 0) {
-          line(56, y + 2, 64, y, colors.feature, 3);
-          line(64, y, 72, y + 2, colors.feature, 3);
+          line(56, y + 2, 64, y, renderColors.feature, 3);
+          line(64, y, 72, y + 2, renderColors.feature, 3);
           return;
         }
         drawFlatMouth(y, 14);
       }
 
       function drawSweat(x, y) {
-        circle(x, y, 3, colors.sweat);
-        line(x, y - 5, x - 3, y, colors.sweat, 2);
-        line(x, y - 5, x + 2, y - 1, colors.sweat, 2);
+        circle(x, y, 3, renderColors.sweat);
+        line(x, y - 5, x - 3, y, renderColors.sweat, 2);
+        line(x, y - 5, x + 2, y - 1, renderColors.sweat, 2);
       }
 
       function drawTitle() {
-        ctx.fillStyle = colors.title;
+        ctx.fillStyle = renderColors.title;
         ctx.font = "8px monospace";
         ctx.fillText("CODEX", 6, 12);
       }
 
       function drawInfo() {
         if (!currentInfo) return;
-        ctx.fillStyle = colors.feature;
+        ctx.fillStyle = renderColors.feature;
         ctx.font = "8px monospace";
         const text = currentInfo.slice(0, 18);
         const width = ctx.measureText(text).width;
@@ -736,14 +813,15 @@
 
       function drawWorking(phase) {
         const bob = Math.round(Math.sin(phase / 16) * 1);
-        const scan = Math.floor((phase % 16) / 4) - 2;
+        const scan = phase % 6;
         drawBackground(false);
-        drawEyeBar(25, 42 + bob, 12, 27);
-        drawEyeBar(91, 42 + bob, 12, 27);
-        rect(28 + scan, 49 + bob, 3, 9, colors.bg);
-        rect(94 + scan, 49 + bob, 3, 9, colors.bg);
-        drawSmallMouth(94 + bob, -1);
-        rect(47, 103, 34, 3, colors.feature);
+        drawEyeBar(22, 42 + bob, 10, 26);
+        drawEyeBar(96, 42 + bob, 10, 26);
+        rect(24 + scan, 49 + bob, 2, 8, renderColors.bg);
+        rect(98 - scan, 49 + bob, 2, 8, renderColors.bg);
+        drawFlatMouth(95 + bob, 12);
+        rect(46, 28, 18, 2, renderColors.accent);
+        rect(68, 28, 14, 2, renderColors.accent);
       }
 
       function drawAttention(phase) {
@@ -752,11 +830,11 @@
         drawBackground(false);
         drawEyeBar(25, 42 + bob, 12, 27);
         drawEyeBar(91, 42 + bob, 12, 27);
-        rect(58, 92 + bob, 12, 3, colors.feature);
+        rect(58, 92 + bob, 12, 3, renderColors.feature);
         if (pulse < 10) {
-          rect(100, 32, 10, 10, colors.warn);
+          rect(100, 32, 10, 10, renderColors.warn);
         } else {
-          rect(103, 35, 4, 4, colors.warn);
+          rect(103, 35, 4, 4, renderColors.warn);
         }
       }
 
@@ -777,12 +855,13 @@
         drawClosedEye(25, 59, 17, 0);
         drawClosedEye(86, 59, 17, 0);
         drawFlatMouth(95, 8);
-        line(92, 27 - Math.floor(drift / 5), 102, 27 - Math.floor(drift / 5), colors.accent, 2);
-        line(102, 27 - Math.floor(drift / 5), 94, 35 - Math.floor(drift / 5), colors.accent, 2);
-        line(94, 35 - Math.floor(drift / 5), 104, 35 - Math.floor(drift / 5), colors.accent, 2);
+        line(92, 27 - Math.floor(drift / 5), 102, 27 - Math.floor(drift / 5), renderColors.accent, 2);
+        line(102, 27 - Math.floor(drift / 5), 94, 35 - Math.floor(drift / 5), renderColors.accent, 2);
+        line(94, 35 - Math.floor(drift / 5), 104, 35 - Math.floor(drift / 5), renderColors.accent, 2);
       }
 
       function renderFace() {
+        renderColors = derivedTheme(currentMode);
         ctx.clearRect(0, 0, 128, 128);
         if (currentMode === "idle") drawIdle(frame);
         else if (currentMode === "working") drawWorking(frame);
@@ -815,6 +894,16 @@
         renderFace();
       }
 
+      function setPaletteMode(mode) {
+        if (!MODES.includes(mode)) {
+          return;
+        }
+        paletteMode = mode;
+        syncColorInputs();
+        refreshPaletteModeButtons();
+        refreshPresetButtons();
+      }
+
       function buildStateButtons() {
         MODES.forEach((mode) => {
           const button = document.createElement("button");
@@ -829,6 +918,20 @@
           stateButtons.appendChild(button);
         });
         refreshButtons();
+      }
+
+      function buildPaletteModeButtons() {
+        MODES.forEach((mode) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = MODE_LABELS[mode];
+          button.dataset.mode = mode;
+          button.addEventListener("click", () => {
+            setPaletteMode(mode);
+          });
+          paletteModeButtons.appendChild(button);
+        });
+        refreshPaletteModeButtons();
       }
 
       function buildPresetButtons() {
@@ -854,8 +957,8 @@
           button.appendChild(chips);
 
           button.addEventListener("click", async () => {
-            applyPalette(preset.colors);
-            await sendCommand(buildPaletteCommand());
+            applyPalette(preset.colors, paletteMode);
+            await sendCommand(buildPaletteCommand(paletteMode));
           });
 
           presetButtons.appendChild(button);
@@ -863,16 +966,21 @@
         refreshPresetButtons();
       }
 
-      async function sendCommand(command) {
+      async function sendCommand(command, options = {}) {
+        const { silent = false } = options;
         if (transport === "serial" && writer) {
           await writer.write(new TextEncoder().encode(command + "\n"));
-          log(`已发送 ${command} (USB)`, "ok");
+          if (!silent) {
+            log(`已发送 ${command} (USB)`, "ok");
+          }
           return;
         }
 
         if (transport === "ble" && bleRxCharacteristic) {
           await bleRxCharacteristic.writeValue(new TextEncoder().encode(command + "\n"));
-          log(`已发送 ${command} (BLE)`, "ok");
+          if (!silent) {
+            log(`已发送 ${command} (BLE)`, "ok");
+          }
           return;
         }
 
@@ -907,8 +1015,9 @@
 
         if (trimmed.startsWith("PALETTE\t")) {
           const parts = trimmed.split("\t").slice(1);
-          applyPalette(parsePalettePayload(parts));
-          log("已同步设备配色", "ok");
+          const payload = parsePalettePayload(parts);
+          applyPalette(payload.colors, payload.mode || paletteMode);
+          log(`已同步 ${MODE_LABELS[payload.mode || paletteMode]} 配色`, "ok");
           return;
         }
 
@@ -918,6 +1027,17 @@
         }
 
         log(`设备: ${trimmed}`);
+      }
+
+      function sleep(ms) {
+        return new Promise((resolve) => window.setTimeout(resolve, ms));
+      }
+
+      async function syncAllPalettes() {
+        for (const mode of MODES) {
+          await sendCommand(`palette ${mode}`, { silent: true });
+          await sleep(120);
+        }
       }
 
       function handleBleNotifications(event) {
@@ -988,6 +1108,8 @@
         setTransport("serial");
         updateConnectionLabel("USB 已连接", true);
         log("串口已连接", "ok");
+        await sendCommand("status", { silent: true });
+        await syncAllPalettes();
       }
 
       function onBleDisconnected() {
@@ -1021,9 +1143,9 @@
         setTransport("ble");
         updateConnectionLabel("蓝牙已连接", true);
         log(`蓝牙已连接: ${bleDevice.name || "CodexFace"}`, "ok");
-        await sendCommand("status");
-        await sendCommand("palette");
-        await sendCommand("ping");
+        await sendCommand("status", { silent: true });
+        await syncAllPalettes();
+        await sendCommand("ping", { silent: true });
       }
 
       connectBleBtn.addEventListener("click", async () => {
@@ -1061,22 +1183,24 @@
 
       COLOR_KEYS.forEach((key) => {
         colorInputs[key].addEventListener("input", () => {
-          applyPalette({ [key]: colorInputs[key].value });
+          applyPalette({ [key]: colorInputs[key].value }, paletteMode);
         });
       });
 
       applyPaletteBtn.addEventListener("click", async () => {
-        await sendCommand(buildPaletteCommand());
+        await sendCommand(buildPaletteCommand(paletteMode));
       });
 
       resetPaletteBtn.addEventListener("click", async () => {
-        applyPalette(DEFAULT_COLORS);
-        await sendCommand("palette reset");
+        applyPalette(DEFAULT_MODE_PALETTES[paletteMode], paletteMode);
+        await sendCommand(`palette ${paletteMode} reset`);
       });
 
       buildStateButtons();
+      buildPaletteModeButtons();
       buildPresetButtons();
-      applyPalette(DEFAULT_COLORS);
+      MODES.forEach((mode) => applyPalette(DEFAULT_MODE_PALETTES[mode], mode));
+      setPaletteMode("idle");
       animate();
       log("控制台已就绪。优先点“连接蓝牙”，如果浏览器或环境不方便，再切到 USB。");
     </script>
