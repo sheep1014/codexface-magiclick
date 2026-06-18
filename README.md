@@ -1,5 +1,7 @@
 # CodexFace for MagiClick ESP32-S3
 
+[简体中文说明](./README.zh-CN.md)
+
 Turn a MagiClick ESP32-S3 desktop toy into a Codex status face with:
 
 - 5 animated states: `idle`, `working`, `attention`, `blocked`, `off`
