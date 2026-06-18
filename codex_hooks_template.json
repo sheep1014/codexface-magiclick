@@ -1,0 +1,96 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__PYTHON__ __HOOK__ idle",
+            "timeout": 3
+          }
+        ],
+        "matcher": "startup|resume"
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__PYTHON__ __HOOK__ working",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__PYTHON__ __HOOK__ working",
+            "timeout": 3
+          }
+        ],
+        "matcher": ".*"
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__PYTHON__ __HOOK__ working",
+            "timeout": 3
+          }
+        ],
+        "matcher": ".*"
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__PYTHON__ __HOOK__ blocked",
+            "timeout": 3
+          }
+        ],
+        "matcher": ".*"
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__PYTHON__ __HOOK__ attention",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__PYTHON__ __HOOK__ working",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__PYTHON__ __HOOK__ idle",
+            "timeout": 3
+          }
+        ]
+      }
+    ]
+  }
+}

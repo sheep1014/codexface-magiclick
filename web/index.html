@@ -1,0 +1,1084 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Codex Face Console</title>
+    <style>
+      :root {
+        --bg: #1b120d;
+        --panel: rgba(48, 28, 16, 0.88);
+        --panel-2: rgba(82, 48, 25, 0.78);
+        --line: rgba(255, 197, 132, 0.18);
+        --text: #fff3e4;
+        --muted: #d4b49a;
+        --accent: #f28c28;
+        --accent-2: #ffbf73;
+        --shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+        --ok: #84d19f;
+        --warn: #ffd166;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Avenir Next", "Helvetica Neue", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top left, rgba(255, 177, 102, 0.22), transparent 28%),
+          radial-gradient(circle at bottom right, rgba(255, 122, 0, 0.24), transparent 32%),
+          linear-gradient(145deg, #110b07 0%, #25160d 45%, #120c08 100%);
+      }
+
+      .shell {
+        width: min(1120px, calc(100% - 32px));
+        margin: 24px auto;
+        display: grid;
+        gap: 20px;
+      }
+
+      .hero,
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(14px);
+      }
+
+      .hero {
+        padding: 28px;
+        display: grid;
+        gap: 20px;
+        overflow: hidden;
+      }
+
+      .hero::after {
+        content: "";
+        position: absolute;
+      }
+
+      .hero-top {
+        display: flex;
+        align-items: start;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+
+      .eyebrow {
+        text-transform: uppercase;
+        letter-spacing: 0.22em;
+        font-size: 12px;
+        color: var(--accent-2);
+      }
+
+      h1 {
+        margin: 8px 0 10px;
+        font-size: clamp(32px, 6vw, 60px);
+        line-height: 0.95;
+        font-weight: 700;
+      }
+
+      .sub {
+        max-width: 640px;
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+
+      .status-pill {
+        padding: 10px 14px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        color: var(--accent-2);
+        background: rgba(255, 183, 105, 0.08);
+        font-size: 14px;
+        white-space: nowrap;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1.1fr 0.9fr;
+        gap: 20px;
+      }
+
+      .panel {
+        padding: 22px;
+      }
+
+      .section-title {
+        margin: 0 0 16px;
+        font-size: 14px;
+        color: var(--accent-2);
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+
+      .preview-wrap {
+        display: grid;
+        place-items: center;
+        min-height: 360px;
+        background:
+          linear-gradient(180deg, rgba(255, 187, 122, 0.08), rgba(255, 187, 122, 0)),
+          var(--panel-2);
+        border-radius: 24px;
+        border: 1px solid rgba(255, 209, 153, 0.08);
+      }
+
+      canvas {
+        width: min(72vw, 320px);
+        height: min(72vw, 320px);
+        image-rendering: pixelated;
+        border-radius: 26px;
+        box-shadow: inset 0 0 0 10px rgba(0, 0, 0, 0.1);
+      }
+
+      .states {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      button,
+      input {
+        font: inherit;
+      }
+
+      button {
+        border: 1px solid rgba(255, 206, 152, 0.18);
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--text);
+        border-radius: 18px;
+        padding: 14px 16px;
+        cursor: pointer;
+        transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+      }
+
+      button:hover {
+        transform: translateY(-1px);
+        background: rgba(255, 190, 127, 0.1);
+        border-color: rgba(255, 213, 166, 0.32);
+      }
+
+      button.active {
+        background: linear-gradient(180deg, rgba(242, 140, 40, 0.28), rgba(242, 140, 40, 0.12));
+        border-color: rgba(255, 210, 163, 0.38);
+      }
+
+      .controls {
+        display: grid;
+        gap: 14px;
+      }
+
+      .row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .row > * {
+        flex: 1;
+        min-width: 0;
+      }
+
+      input {
+        width: 100%;
+        border-radius: 18px;
+        border: 1px solid rgba(255, 206, 152, 0.16);
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--text);
+        padding: 14px 16px;
+        outline: none;
+      }
+
+      input::placeholder {
+        color: rgba(255, 243, 228, 0.42);
+      }
+
+      .primary {
+        background: linear-gradient(180deg, #f28c28, #dd6d11);
+        color: #1b120d;
+        font-weight: 700;
+      }
+
+      .ghost {
+        color: var(--muted);
+      }
+
+      .palette-toolbar,
+      .presets,
+      .palette-grid {
+        display: grid;
+        gap: 10px;
+      }
+
+      .palette-toolbar {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .presets {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .preset-btn {
+        min-height: 76px;
+        display: grid;
+        align-content: space-between;
+        gap: 10px;
+        text-align: left;
+      }
+
+      .preset-name {
+        font-size: 13px;
+        letter-spacing: 0.04em;
+      }
+
+      .preset-chips {
+        display: flex;
+        gap: 6px;
+      }
+
+      .preset-chip {
+        width: 14px;
+        height: 14px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+      }
+
+      .palette-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .swatch-field {
+        display: grid;
+        gap: 8px;
+        padding: 12px;
+        border-radius: 18px;
+        border: 1px solid rgba(255, 206, 152, 0.12);
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .swatch-field span {
+        color: var(--muted);
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .color-input {
+        width: 100%;
+        min-height: 52px;
+        padding: 4px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 206, 152, 0.16);
+        background: rgba(255, 255, 255, 0.04);
+        cursor: pointer;
+      }
+
+      .color-input::-webkit-color-swatch-wrapper {
+        padding: 0;
+      }
+
+      .color-input::-webkit-color-swatch {
+        border: none;
+        border-radius: 10px;
+      }
+
+      .log {
+        min-height: 180px;
+        padding: 16px;
+        border-radius: 18px;
+        background: rgba(0, 0, 0, 0.22);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        overflow: auto;
+        font-family: "SF Mono", "Menlo", monospace;
+        font-size: 13px;
+        line-height: 1.6;
+        color: #ffe7ce;
+        white-space: pre-wrap;
+      }
+
+      .tiny {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.6;
+        margin: 0;
+      }
+
+      .ok {
+        color: var(--ok);
+      }
+
+      .warn {
+        color: var(--warn);
+      }
+
+      @media (max-width: 920px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        .states {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .presets,
+        .palette-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 560px) {
+        .palette-toolbar,
+        .presets,
+        .palette-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <div class="hero-top">
+          <div>
+            <div class="eyebrow">Codex x MagiClick</div>
+            <h1>Face Console</h1>
+            <p class="sub">
+              直接在浏览器里连你的桌面摆件，切换 5 个状态表情，并发送一行简短屏幕文案。
+              现在支持 BLE 和 USB Serial 两种通道。日常控制优先用蓝牙，排障和首次安装时再切到 USB。
+            </p>
+          </div>
+          <div id="connectionState" class="status-pill">未连接</div>
+        </div>
+      </section>
+
+      <section class="grid">
+        <div class="panel">
+          <p class="section-title">Preview</p>
+          <div class="preview-wrap">
+            <canvas id="faceCanvas" width="128" height="128"></canvas>
+          </div>
+        </div>
+
+        <div class="panel">
+          <p class="section-title">Controls</p>
+          <div class="controls">
+            <div class="row">
+              <button id="connectBleBtn" class="primary">连接蓝牙</button>
+              <button id="connectUsbBtn">连接 USB</button>
+              <button id="disconnectBtn" class="ghost">断开</button>
+            </div>
+
+            <div class="states" id="stateButtons"></div>
+
+            <div class="row">
+              <input
+                id="infoInput"
+                maxlength="18"
+                placeholder="输入一行短文案，比如 Waiting / Sheep / Fixing"
+              />
+            </div>
+
+            <div class="row">
+              <button id="sendInfoBtn">发送文案</button>
+              <button id="clearInfoBtn" class="ghost">清空文案</button>
+            </div>
+
+            <div class="palette-toolbar">
+              <button id="applyPaletteBtn">应用配色</button>
+              <button id="resetPaletteBtn" class="ghost">恢复默认</button>
+            </div>
+
+            <div class="presets" id="presetButtons"></div>
+
+            <div class="palette-grid">
+              <label class="swatch-field">
+                <span>脸底色</span>
+                <input id="bgColorInput" class="color-input" type="color" value="#EC7E1D" />
+              </label>
+              <label class="swatch-field">
+                <span>五官色</span>
+                <input id="featureColorInput" class="color-input" type="color" value="#161311" />
+              </label>
+              <label class="swatch-field">
+                <span>高光线</span>
+                <input id="accentColorInput" class="color-input" type="color" value="#A95010" />
+              </label>
+              <label class="swatch-field">
+                <span>标题色</span>
+                <input id="titleColorInput" class="color-input" type="color" value="#F7C28E" />
+              </label>
+              <label class="swatch-field">
+                <span>警示色</span>
+                <input id="warnColorInput" class="color-input" type="color" value="#FFD166" />
+              </label>
+              <label class="swatch-field">
+                <span>汗滴色</span>
+                <input id="sweatColorInput" class="color-input" type="color" value="#A3E6FF" />
+              </label>
+            </div>
+
+            <p class="tiny">颜色会实时更新预览，点“应用配色”后下发到设备。当前版本重启后会恢复默认色。</p>
+
+            <p class="tiny">
+              蓝牙模式需要浏览器支持 `Web Bluetooth`，USB 模式需要支持 `Web Serial`。在 `http://127.0.0.1` 打开时两者都可用。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <p class="section-title">Activity</p>
+        <div id="log" class="log"></div>
+      </section>
+    </main>
+
+    <script>
+      const MODES = ["idle", "working", "attention", "blocked", "off"];
+      const BLE_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+      const BLE_RX_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+      const BLE_TX_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+      const COLOR_KEYS = ["bg", "feature", "accent", "title", "warn", "sweat"];
+      const MODE_LABELS = {
+        idle: "Idle",
+        working: "Working",
+        attention: "Attention",
+        blocked: "Blocked",
+        off: "Off",
+      };
+
+      const DEFAULT_COLORS = {
+        bg: "#EC7E1D",
+        feature: "#161311",
+        accent: "#A95010",
+        title: "#F7C28E",
+        warn: "#FFD166",
+        sweat: "#A3E6FF",
+      };
+
+      const PRESET_PALETTES = [
+        {
+          id: "codex",
+          label: "经典橙",
+          colors: DEFAULT_COLORS,
+        },
+        {
+          id: "mono",
+          label: "冷灰",
+          colors: {
+            bg: "#D8D7D2",
+            feature: "#1B1E22",
+            accent: "#6F747B",
+            title: "#F9FAFB",
+            warn: "#FFC857",
+            sweat: "#7DD3FC",
+          },
+        },
+        {
+          id: "mint",
+          label: "薄荷",
+          colors: {
+            bg: "#97E7C3",
+            feature: "#11312B",
+            accent: "#2A7F62",
+            title: "#F4FFF9",
+            warn: "#FFE27A",
+            sweat: "#C8F6FF",
+          },
+        },
+        {
+          id: "night",
+          label: "夜航",
+          colors: {
+            bg: "#203A5D",
+            feature: "#F7F5EF",
+            accent: "#5DA9E9",
+            title: "#F9E2AF",
+            warn: "#FFB703",
+            sweat: "#8ECAE6",
+          },
+        },
+      ];
+
+      const canvas = document.getElementById("faceCanvas");
+      const ctx = canvas.getContext("2d");
+      const stateButtons = document.getElementById("stateButtons");
+      const presetButtons = document.getElementById("presetButtons");
+      const connectBleBtn = document.getElementById("connectBleBtn");
+      const connectUsbBtn = document.getElementById("connectUsbBtn");
+      const disconnectBtn = document.getElementById("disconnectBtn");
+      const sendInfoBtn = document.getElementById("sendInfoBtn");
+      const clearInfoBtn = document.getElementById("clearInfoBtn");
+      const applyPaletteBtn = document.getElementById("applyPaletteBtn");
+      const resetPaletteBtn = document.getElementById("resetPaletteBtn");
+      const infoInput = document.getElementById("infoInput");
+      const logView = document.getElementById("log");
+      const connectionState = document.getElementById("connectionState");
+      const colorInputs = {
+        bg: document.getElementById("bgColorInput"),
+        feature: document.getElementById("featureColorInput"),
+        accent: document.getElementById("accentColorInput"),
+        title: document.getElementById("titleColorInput"),
+        warn: document.getElementById("warnColorInput"),
+        sweat: document.getElementById("sweatColorInput"),
+      };
+
+      let transport = "none";
+      let port = null;
+      let writer = null;
+      let bleDevice = null;
+      let bleServer = null;
+      let bleRxCharacteristic = null;
+      let bleTxCharacteristic = null;
+      let bleBuffer = "";
+      let currentMode = "idle";
+      let currentInfo = "";
+      let frame = 0;
+
+      const colors = { ...DEFAULT_COLORS, bgDark: "#D96C10" };
+
+      function normalizeHex(value, fallback = "#000000") {
+        if (typeof value !== "string") {
+          return fallback;
+        }
+        const cleaned = value.trim().replace(/^#/, "").slice(0, 6);
+        if (!/^[0-9a-fA-F]{6}$/.test(cleaned)) {
+          return fallback;
+        }
+        return `#${cleaned.toUpperCase()}`;
+      }
+
+      function hexToRgb(value) {
+        const hex = normalizeHex(value).slice(1);
+        return {
+          r: Number.parseInt(hex.slice(0, 2), 16),
+          g: Number.parseInt(hex.slice(2, 4), 16),
+          b: Number.parseInt(hex.slice(4, 6), 16),
+        };
+      }
+
+      function rgbToHex(r, g, b) {
+        return `#${[r, g, b]
+          .map((channel) => Math.max(0, Math.min(255, Math.round(channel))).toString(16).padStart(2, "0"))
+          .join("")
+          .toUpperCase()}`;
+      }
+
+      function darkenHex(value, factor = 0.84) {
+        const { r, g, b } = hexToRgb(value);
+        return rgbToHex(r * factor, g * factor, b * factor);
+      }
+
+      function paletteSignature(source) {
+        return COLOR_KEYS.map((key) => normalizeHex(source[key], DEFAULT_COLORS[key])).join("|");
+      }
+
+      function syncColorInputs() {
+        COLOR_KEYS.forEach((key) => {
+          colorInputs[key].value = normalizeHex(colors[key], DEFAULT_COLORS[key]);
+        });
+      }
+
+      function refreshPresetButtons() {
+        const activeSignature = paletteSignature(colors);
+        [...presetButtons.querySelectorAll("button")].forEach((button) => {
+          button.classList.toggle("active", button.dataset.signature === activeSignature);
+        });
+      }
+
+      function applyPalette(nextColors = {}) {
+        COLOR_KEYS.forEach((key) => {
+          if (nextColors[key]) {
+            colors[key] = normalizeHex(nextColors[key], DEFAULT_COLORS[key]);
+          }
+        });
+        colors.bgDark = darkenHex(colors.bg);
+        syncColorInputs();
+        refreshPresetButtons();
+        renderFace();
+      }
+
+      function buildPaletteCommand() {
+        return `palette ${COLOR_KEYS.map((key) => `${key}=${normalizeHex(colors[key], DEFAULT_COLORS[key])}`).join(" ")}`;
+      }
+
+      function parsePalettePayload(parts) {
+        const nextColors = {};
+        parts.forEach((part) => {
+          const [name, raw] = part.split("=");
+          if (!name || !raw) {
+            return;
+          }
+          const key = name.trim().toLowerCase();
+          if (COLOR_KEYS.includes(key)) {
+            nextColors[key] = normalizeHex(raw, DEFAULT_COLORS[key]);
+          }
+        });
+        return nextColors;
+      }
+
+      function log(message, tone = "") {
+        const stamp = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+        const line = `[${stamp}] ${message}`;
+        const span = document.createElement("div");
+        span.textContent = line;
+        if (tone) {
+          span.className = tone;
+        }
+        logView.appendChild(span);
+        logView.scrollTop = logView.scrollHeight;
+      }
+
+      function updateConnectionLabel(text, connected = false) {
+        connectionState.textContent = text;
+        connectionState.classList.toggle("ok", connected);
+      }
+
+      function setTransport(nextTransport) {
+        transport = nextTransport;
+      }
+
+      function rect(x, y, w, h, color) {
+        ctx.fillStyle = color;
+        ctx.fillRect(x, y, w, h);
+      }
+
+      function line(x0, y0, x1, y1, color, thickness = 1) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = thickness;
+        ctx.lineCap = "square";
+        ctx.beginPath();
+        ctx.moveTo(x0 + 0.5, y0 + 0.5);
+        ctx.lineTo(x1 + 0.5, y1 + 0.5);
+        ctx.stroke();
+      }
+
+      function circle(cx, cy, radius, color) {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      function drawBackground(dim = false) {
+        rect(0, 0, 128, 128, dim ? colors.bgDark : colors.bg);
+        if (!dim) {
+          rect(0, 0, 128, 3, colors.accent);
+        }
+      }
+
+      function drawEyeBar(x, y, w = 12, h = 28) {
+        rect(x, y, w, h, colors.feature);
+      }
+
+      function drawClosedEye(x, y, width = 16, slope = 0) {
+        line(x, y, x + width, y + slope, colors.feature, 4);
+      }
+
+      function drawFlatMouth(y, width = 18) {
+        line(64 - width / 2, y, 64 + width / 2, y, colors.feature, 3);
+      }
+
+      function drawSmallMouth(y, mood = 0) {
+        if (mood > 0) {
+          line(56, y, 64, y + 2, colors.feature, 3);
+          line(64, y + 2, 72, y, colors.feature, 3);
+          return;
+        }
+        if (mood < 0) {
+          line(56, y + 2, 64, y, colors.feature, 3);
+          line(64, y, 72, y + 2, colors.feature, 3);
+          return;
+        }
+        drawFlatMouth(y, 14);
+      }
+
+      function drawSweat(x, y) {
+        circle(x, y, 3, colors.sweat);
+        line(x, y - 5, x - 3, y, colors.sweat, 2);
+        line(x, y - 5, x + 2, y - 1, colors.sweat, 2);
+      }
+
+      function drawTitle() {
+        ctx.fillStyle = colors.title;
+        ctx.font = "8px monospace";
+        ctx.fillText("CODEX", 6, 12);
+      }
+
+      function drawInfo() {
+        if (!currentInfo) return;
+        ctx.fillStyle = colors.feature;
+        ctx.font = "8px monospace";
+        const text = currentInfo.slice(0, 18);
+        const width = ctx.measureText(text).width;
+        ctx.fillText(text, (128 - width) / 2, 118);
+      }
+
+      function drawIdle(phase) {
+        const bob = Math.round(Math.sin(phase / 18) * 1);
+        const blink = [0, 1, 2, 3].includes(phase % 120);
+        drawBackground(false);
+        if (blink) {
+          drawClosedEye(25, 59 + bob, 17, 0);
+          drawClosedEye(86, 59 + bob, 17, 0);
+        } else {
+          drawEyeBar(25, 40 + bob);
+          drawEyeBar(91, 40 + bob);
+        }
+        drawSmallMouth(95 + bob, 0);
+      }
+
+      function drawWorking(phase) {
+        const bob = Math.round(Math.sin(phase / 16) * 1);
+        const scan = Math.floor((phase % 16) / 4) - 2;
+        drawBackground(false);
+        drawEyeBar(25, 42 + bob, 12, 27);
+        drawEyeBar(91, 42 + bob, 12, 27);
+        rect(28 + scan, 49 + bob, 3, 9, colors.bg);
+        rect(94 + scan, 49 + bob, 3, 9, colors.bg);
+        drawSmallMouth(94 + bob, -1);
+        rect(47, 103, 34, 3, colors.feature);
+      }
+
+      function drawAttention(phase) {
+        const bob = Math.round(Math.sin(phase / 16) * 1);
+        const pulse = phase % 20;
+        drawBackground(false);
+        drawEyeBar(25, 42 + bob, 12, 27);
+        drawEyeBar(91, 42 + bob, 12, 27);
+        rect(58, 92 + bob, 12, 3, colors.feature);
+        if (pulse < 10) {
+          rect(100, 32, 10, 10, colors.warn);
+        } else {
+          rect(103, 35, 4, 4, colors.warn);
+        }
+      }
+
+      function drawBlocked(phase) {
+        const bob = Math.round(Math.sin(phase / 14) * 1);
+        drawBackground(false);
+        drawEyeBar(25, 44 + bob, 12, 26);
+        drawEyeBar(91, 44 + bob, 12, 26);
+        drawSmallMouth(95 + bob, -1);
+        if (phase % 24 < 15) {
+          drawSweat(107, 78 + (phase % 5));
+        }
+      }
+
+      function drawOff(phase) {
+        const drift = phase % 28;
+        drawBackground(true);
+        drawClosedEye(25, 59, 17, 0);
+        drawClosedEye(86, 59, 17, 0);
+        drawFlatMouth(95, 8);
+        line(92, 27 - Math.floor(drift / 5), 102, 27 - Math.floor(drift / 5), colors.accent, 2);
+        line(102, 27 - Math.floor(drift / 5), 94, 35 - Math.floor(drift / 5), colors.accent, 2);
+        line(94, 35 - Math.floor(drift / 5), 104, 35 - Math.floor(drift / 5), colors.accent, 2);
+      }
+
+      function renderFace() {
+        ctx.clearRect(0, 0, 128, 128);
+        if (currentMode === "idle") drawIdle(frame);
+        else if (currentMode === "working") drawWorking(frame);
+        else if (currentMode === "attention") drawAttention(frame);
+        else if (currentMode === "blocked") drawBlocked(frame);
+        else drawOff(frame);
+        drawTitle();
+        drawInfo();
+      }
+
+      function animate() {
+        frame += 1;
+        renderFace();
+        requestAnimationFrame(animate);
+      }
+
+      function refreshButtons() {
+        [...stateButtons.querySelectorAll("button")].forEach((button) => {
+          button.classList.toggle("active", button.dataset.mode === currentMode);
+        });
+      }
+
+      function applyStatus(mode, text) {
+        if (MODES.includes(mode)) {
+          currentMode = mode;
+        }
+        currentInfo = (text || "").slice(0, 18);
+        infoInput.value = currentInfo;
+        refreshButtons();
+        renderFace();
+      }
+
+      function buildStateButtons() {
+        MODES.forEach((mode) => {
+          const button = document.createElement("button");
+          button.textContent = MODE_LABELS[mode];
+          button.dataset.mode = mode;
+          button.addEventListener("click", async () => {
+            currentMode = mode;
+            refreshButtons();
+            renderFace();
+            await sendCommand(mode);
+          });
+          stateButtons.appendChild(button);
+        });
+        refreshButtons();
+      }
+
+      function buildPresetButtons() {
+        PRESET_PALETTES.forEach((preset) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "preset-btn";
+          button.dataset.signature = paletteSignature(preset.colors);
+
+          const name = document.createElement("div");
+          name.className = "preset-name";
+          name.textContent = preset.label;
+          button.appendChild(name);
+
+          const chips = document.createElement("div");
+          chips.className = "preset-chips";
+          ["bg", "feature", "accent", "warn"].forEach((key) => {
+            const chip = document.createElement("span");
+            chip.className = "preset-chip";
+            chip.style.background = preset.colors[key];
+            chips.appendChild(chip);
+          });
+          button.appendChild(chips);
+
+          button.addEventListener("click", async () => {
+            applyPalette(preset.colors);
+            await sendCommand(buildPaletteCommand());
+          });
+
+          presetButtons.appendChild(button);
+        });
+        refreshPresetButtons();
+      }
+
+      async function sendCommand(command) {
+        if (transport === "serial" && writer) {
+          await writer.write(new TextEncoder().encode(command + "\n"));
+          log(`已发送 ${command} (USB)`, "ok");
+          return;
+        }
+
+        if (transport === "ble" && bleRxCharacteristic) {
+          await bleRxCharacteristic.writeValue(new TextEncoder().encode(command + "\n"));
+          log(`已发送 ${command} (BLE)`, "ok");
+          return;
+        }
+
+        if (command.startsWith("text ")) {
+          currentInfo = command.slice(5).trim().slice(0, 18);
+        }
+        if (command === "cleartext") {
+          currentInfo = "";
+        }
+        if (command === "palette reset") {
+          applyPalette(DEFAULT_COLORS);
+        }
+        if (command.startsWith("palette ")) {
+          applyPalette(parsePalettePayload(command.slice(8).trim().split(/\s+/)));
+        }
+        renderFace();
+        log(`未发送，设备还没连接: ${command}`, "warn");
+      }
+
+      function parseIncomingLine(line) {
+        const trimmed = line.trim();
+        if (!trimmed) {
+          return;
+        }
+
+        if (trimmed.startsWith("STATUS\t")) {
+          const parts = trimmed.split("\t");
+          applyStatus(parts[1] || currentMode, parts[2] || "");
+          log(`板子状态: ${parts[1] || currentMode}${parts[2] ? ` / ${parts[2]}` : ""}`, "ok");
+          return;
+        }
+
+        if (trimmed.startsWith("PALETTE\t")) {
+          const parts = trimmed.split("\t").slice(1);
+          applyPalette(parsePalettePayload(parts));
+          log("已同步设备配色", "ok");
+          return;
+        }
+
+        if (trimmed === "PONG") {
+          log("收到设备心跳", "ok");
+          return;
+        }
+
+        log(`设备: ${trimmed}`);
+      }
+
+      function handleBleNotifications(event) {
+        const text = new TextDecoder().decode(event.target.value);
+        for (const char of text) {
+          if (char === "\n" || char === "\r") {
+            const line = bleBuffer;
+            bleBuffer = "";
+            parseIncomingLine(line);
+          } else {
+            bleBuffer += char;
+          }
+        }
+      }
+
+      async function disconnectSerial() {
+        try {
+          if (writer) {
+            writer.releaseLock();
+            writer = null;
+          }
+          if (port) {
+            await port.close();
+            port = null;
+          }
+        } catch (error) {
+          log(`USB 断开失败: ${error.message}`, "warn");
+        }
+      }
+
+      async function disconnectBle() {
+        try {
+          if (bleTxCharacteristic) {
+            bleTxCharacteristic.removeEventListener("characteristicvaluechanged", handleBleNotifications);
+          }
+          if (bleDevice && bleDevice.gatt?.connected) {
+            bleDevice.gatt.disconnect();
+          }
+        } catch (error) {
+          log(`蓝牙断开失败: ${error.message}`, "warn");
+        } finally {
+          bleDevice = null;
+          bleServer = null;
+          bleRxCharacteristic = null;
+          bleTxCharacteristic = null;
+          bleBuffer = "";
+        }
+      }
+
+      async function disconnectAll() {
+        await disconnectSerial();
+        await disconnectBle();
+        setTransport("none");
+        updateConnectionLabel("未连接", false);
+        log("设备已断开");
+      }
+
+      async function connectSerial() {
+        if (!("serial" in navigator)) {
+          log("当前浏览器不支持 Web Serial，请改用 Chrome 或 Edge。", "warn");
+          return;
+        }
+
+        await disconnectAll();
+        port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 115200 });
+        writer = port.writable.getWriter();
+        setTransport("serial");
+        updateConnectionLabel("USB 已连接", true);
+        log("串口已连接", "ok");
+      }
+
+      function onBleDisconnected() {
+        bleDevice = null;
+        bleServer = null;
+        bleRxCharacteristic = null;
+        bleTxCharacteristic = null;
+        bleBuffer = "";
+        setTransport("none");
+        updateConnectionLabel("蓝牙已断开", false);
+        log("蓝牙连接已断开", "warn");
+      }
+
+      async function connectBle() {
+        if (!("bluetooth" in navigator)) {
+          log("当前浏览器不支持 Web Bluetooth。", "warn");
+          return;
+        }
+
+        await disconnectAll();
+        bleDevice = await navigator.bluetooth.requestDevice({
+          filters: [{ services: [BLE_SERVICE_UUID] }],
+        });
+        bleDevice.addEventListener("gattserverdisconnected", onBleDisconnected);
+        bleServer = await bleDevice.gatt.connect();
+        const service = await bleServer.getPrimaryService(BLE_SERVICE_UUID);
+        bleRxCharacteristic = await service.getCharacteristic(BLE_RX_UUID);
+        bleTxCharacteristic = await service.getCharacteristic(BLE_TX_UUID);
+        await bleTxCharacteristic.startNotifications();
+        bleTxCharacteristic.addEventListener("characteristicvaluechanged", handleBleNotifications);
+        setTransport("ble");
+        updateConnectionLabel("蓝牙已连接", true);
+        log(`蓝牙已连接: ${bleDevice.name || "CodexFace"}`, "ok");
+        await sendCommand("status");
+        await sendCommand("palette");
+        await sendCommand("ping");
+      }
+
+      connectBleBtn.addEventListener("click", async () => {
+        try {
+          await connectBle();
+        } catch (error) {
+          log(`蓝牙连接失败: ${error.message}`, "warn");
+        }
+      });
+
+      connectUsbBtn.addEventListener("click", async () => {
+        try {
+          await connectSerial();
+        } catch (error) {
+          log(`USB 连接失败: ${error.message}`, "warn");
+        }
+      });
+
+      disconnectBtn.addEventListener("click", async () => {
+        await disconnectAll();
+      });
+
+      sendInfoBtn.addEventListener("click", async () => {
+        currentInfo = infoInput.value.trim().slice(0, 18);
+        renderFace();
+        await sendCommand(`text ${currentInfo}`);
+      });
+
+      clearInfoBtn.addEventListener("click", async () => {
+        currentInfo = "";
+        infoInput.value = "";
+        renderFace();
+        await sendCommand("cleartext");
+      });
+
+      COLOR_KEYS.forEach((key) => {
+        colorInputs[key].addEventListener("input", () => {
+          applyPalette({ [key]: colorInputs[key].value });
+        });
+      });
+
+      applyPaletteBtn.addEventListener("click", async () => {
+        await sendCommand(buildPaletteCommand());
+      });
+
+      resetPaletteBtn.addEventListener("click", async () => {
+        applyPalette(DEFAULT_COLORS);
+        await sendCommand("palette reset");
+      });
+
+      buildStateButtons();
+      buildPresetButtons();
+      applyPalette(DEFAULT_COLORS);
+      animate();
+      log("控制台已就绪。优先点“连接蓝牙”，如果浏览器或环境不方便，再切到 USB。");
+    </script>
+  </body>
+</html>
