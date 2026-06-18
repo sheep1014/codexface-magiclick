@@ -184,6 +184,19 @@ For BLE-based hooks, make sure `~/.codex-face.json` contains:
 }
 ```
 
+On Windows, prefer starting with `ble_name` only instead of copying the BLE UUID shown on macOS. In practice:
+
+- macOS/CoreBluetooth may show a UUID-style identifier
+- Windows/Bleak usually discovers the same device with a MAC-style address such as `24:EC:4A:1F:A0:06`
+- this project now tries `ble_address` first and automatically falls back to `ble_name` scanning if that address is wrong on the current machine
+
+If Windows BLE is not behaving, check:
+
+- Chrome or Edge
+- `~/.codex/hooks/codex_face_hook.log`
+- that the web console is disconnected from BLE so hooks can grab the device
+- the actual Windows-discovered address before adding `ble_address` back into `~/.codex-face.json`
+
 This will:
 
 - copy `codex_face_hook.py` into `~/.codex/hooks/agent_face_hook.py`

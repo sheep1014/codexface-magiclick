@@ -2,12 +2,18 @@ import json
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 try:
     import fcntl
 except ImportError:
     fcntl = None
+
+try:
+    import msvcrt
+except ImportError:
+    msvcrt = None
 
 VALID_MODES = {
     "idle",
@@ -46,6 +52,37 @@ def append_log(message: str) -> None:
             fp.write(f"[{stamp}] {message}\n")
     except Exception:
         pass
+
+
+@contextmanager
+def acquire_lock():
+    lock_fp = None
+    try:
+        if fcntl is not None:
+            LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+            lock_fp = LOCK_PATH.open("w", encoding="utf-8")
+            fcntl.flock(lock_fp.fileno(), fcntl.LOCK_EX)
+        elif msvcrt is not None:
+            LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+            lock_fp = LOCK_PATH.open("a+b")
+            lock_fp.seek(0)
+            if lock_fp.tell() == 0 and lock_fp.read(1) == b"":
+                lock_fp.write(b"0")
+                lock_fp.flush()
+            lock_fp.seek(0)
+            msvcrt.locking(lock_fp.fileno(), msvcrt.LK_LOCK, 1)
+        yield
+    finally:
+        if lock_fp is not None:
+            try:
+                if fcntl is not None:
+                    fcntl.flock(lock_fp.fileno(), fcntl.LOCK_UN)
+                elif msvcrt is not None:
+                    lock_fp.seek(0)
+                    msvcrt.locking(lock_fp.fileno(), msvcrt.LK_UNLCK, 1)
+                lock_fp.close()
+            except Exception:
+                pass
 
 
 def load_state() -> dict:
@@ -105,34 +142,21 @@ def run_idle_timer(expected_timestamp: float) -> int:
     if remaining > 0:
         time.sleep(remaining)
 
-    lock_fp = None
     try:
-        if fcntl is not None:
-            LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
-            lock_fp = LOCK_PATH.open("w", encoding="utf-8")
-            fcntl.flock(lock_fp.fileno(), fcntl.LOCK_EX)
+        with acquire_lock():
+            state = load_state()
+            last_mode = state.get("mode")
+            last_timestamp = float(state.get("timestamp", 0) or 0)
+            if abs(last_timestamp - expected_timestamp) > 0.001:
+                return 0
+            if last_mode not in ACTIVE_MODES:
+                return 0
 
-        state = load_state()
-        last_mode = state.get("mode")
-        last_timestamp = float(state.get("timestamp", 0) or 0)
-        if abs(last_timestamp - expected_timestamp) > 0.001:
-            return 0
-        if last_mode not in ACTIVE_MODES:
-            return 0
-
-        target = send_mode("idle")
-        save_state("idle", target)
-        append_log(f"auto-idle via {target}")
+            target = send_mode("idle")
+            save_state("idle", target)
+            append_log(f"auto-idle via {target}")
     except Exception as exc:
         append_log(f"auto-idle failed: {exc}")
-    finally:
-        if lock_fp is not None:
-            try:
-                if fcntl is not None:
-                    fcntl.flock(lock_fp.fileno(), fcntl.LOCK_UN)
-                lock_fp.close()
-            except Exception:
-                pass
     return 0
 
 
@@ -141,34 +165,21 @@ def run_attention_timer(expected_active_since: float) -> int:
     if remaining > 0:
         time.sleep(remaining)
 
-    lock_fp = None
     try:
-        if fcntl is not None:
-            LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
-            lock_fp = LOCK_PATH.open("w", encoding="utf-8")
-            fcntl.flock(lock_fp.fileno(), fcntl.LOCK_EX)
+        with acquire_lock():
+            state = load_state()
+            last_mode = state.get("mode")
+            active_since = float(state.get("active_since", 0) or 0)
+            if abs(active_since - expected_active_since) > 0.001:
+                return 0
+            if last_mode != "working":
+                return 0
 
-        state = load_state()
-        last_mode = state.get("mode")
-        active_since = float(state.get("active_since", 0) or 0)
-        if abs(active_since - expected_active_since) > 0.001:
-            return 0
-        if last_mode != "working":
-            return 0
-
-        target = send_mode("attention")
-        save_state("attention", target, active_since=expected_active_since)
-        append_log(f"auto-attention via {target}")
+            target = send_mode("attention")
+            save_state("attention", target, active_since=expected_active_since)
+            append_log(f"auto-attention via {target}")
     except Exception as exc:
         append_log(f"auto-attention failed: {exc}")
-    finally:
-        if lock_fp is not None:
-            try:
-                if fcntl is not None:
-                    fcntl.flock(lock_fp.fileno(), fcntl.LOCK_UN)
-                lock_fp.close()
-            except Exception:
-                pass
     return 0
 
 
@@ -193,61 +204,50 @@ def main() -> int:
         append_log(f"ignored invalid mode: {mode}")
         return 0
 
-    lock_fp = None
     try:
-        if fcntl is not None:
-            LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
-            lock_fp = LOCK_PATH.open("w", encoding="utf-8")
-            fcntl.flock(lock_fp.fileno(), fcntl.LOCK_EX)
+        with acquire_lock():
+            state = load_state()
+            last_mode = state.get("mode")
+            last_timestamp = float(state.get("timestamp", 0) or 0)
+            last_active_since = float(state.get("active_since", 0) or 0)
 
-        state = load_state()
-        last_mode = state.get("mode")
-        last_timestamp = float(state.get("timestamp", 0) or 0)
-        last_active_since = float(state.get("active_since", 0) or 0)
+            # Let active expressions linger briefly instead of being immediately
+            # overwritten by a fast follow-up idle hook.
+            if mode == "idle" and last_mode in ACTIVE_MODES:
+                active_age = time.time() - last_timestamp
+                if active_age < MIN_ACTIVE_DISPLAY_SECONDS:
+                    spawn_idle_timer(last_timestamp)
+                    append_log(
+                        f"deferred idle after {last_mode} ({active_age:.2f}s < {MIN_ACTIVE_DISPLAY_SECONDS:.2f}s)"
+                    )
+                    return 0
 
-        # Let active expressions linger briefly instead of being immediately
-        # overwritten by a fast follow-up idle hook.
-        if mode == "idle" and last_mode in ACTIVE_MODES:
-            active_age = time.time() - last_timestamp
-            if active_age < MIN_ACTIVE_DISPLAY_SECONDS:
-                spawn_idle_timer(last_timestamp)
-                append_log(
-                    f"deferred idle after {last_mode} ({active_age:.2f}s < {MIN_ACTIVE_DISPLAY_SECONDS:.2f}s)"
+            if last_mode == mode and time.time() - last_timestamp < DUPLICATE_WINDOW_SECONDS:
+                state_timestamp = time.time()
+                active_since = (
+                    last_active_since if mode in ACTIVE_MODES and last_active_since > 0 else state_timestamp
                 )
+                save_state(mode, state.get("target", "duplicate"), state_timestamp, active_since=active_since)
+                if mode == "working":
+                    spawn_attention_timer(active_since)
+                append_log(f"skipped duplicate {mode}")
                 return 0
 
-        if last_mode == mode and time.time() - last_timestamp < DUPLICATE_WINDOW_SECONDS:
+            target = send_mode(mode)
             state_timestamp = time.time()
-            active_since = last_active_since if mode in ACTIVE_MODES and last_active_since > 0 else state_timestamp
-            save_state(mode, state.get("target", "duplicate"), state_timestamp, active_since=active_since)
-            if mode == "working":
+            active_since = None
+            if mode in ACTIVE_MODES:
+                if mode == last_mode and last_active_since > 0:
+                    active_since = last_active_since
+                else:
+                    active_since = state_timestamp
+            save_state(mode, target, state_timestamp, active_since=active_since)
+            if mode == "working" and active_since is not None:
                 spawn_attention_timer(active_since)
-            append_log(f"skipped duplicate {mode}")
-            return 0
-
-        target = send_mode(mode)
-        state_timestamp = time.time()
-        active_since = None
-        if mode in ACTIVE_MODES:
-            if mode == last_mode and last_active_since > 0:
-                active_since = last_active_since
-            else:
-                active_since = state_timestamp
-        save_state(mode, target, state_timestamp, active_since=active_since)
-        if mode == "working" and active_since is not None:
-            spawn_attention_timer(active_since)
-        append_log(f"sent {mode} via {target}")
+            append_log(f"sent {mode} via {target}")
     except Exception as exc:
         append_log(f"failed {mode}: {exc}")
         return 0
-    finally:
-        if lock_fp is not None:
-            try:
-                if fcntl is not None:
-                    fcntl.flock(lock_fp.fileno(), fcntl.LOCK_UN)
-                lock_fp.close()
-            except Exception:
-                pass
     return 0
 
 

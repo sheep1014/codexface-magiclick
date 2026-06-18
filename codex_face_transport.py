@@ -3,6 +3,7 @@ import asyncio
 import glob
 import json
 import os
+import platform
 import time
 from pathlib import Path
 
@@ -20,6 +21,7 @@ CONFIG_PATH = Path.home() / ".codex-face.json"
 CACHE_PATH = Path.home() / ".codex-face.cache.json"
 BLE_CONNECT_SETTLE_SECONDS = 0.2
 BLE_POST_WRITE_SECONDS = 0.25
+BLE_RETRY_DELAYS = (0.0, 1.0, 2.0)
 
 
 class ConfigError(RuntimeError):
@@ -98,43 +100,53 @@ def send_serial(command: str, config: dict) -> str:
     return f"serial:{port}"
 
 
-async def _send_ble_async(command: str, config: dict) -> str:
-    try:
-        from bleak import BleakClient, BleakScanner
-    except ImportError as exc:
-        raise RuntimeError(
-            "BLE transport requires bleak. Install requirements with a Python environment that supports CoreBluetooth."
-        ) from exc
+def _is_windows() -> bool:
+    return platform.system() == "Windows"
 
-    timeout = config["ble_timeout"]
+
+async def _find_ble_device(config: dict, BleakScanner, timeout: float):
     ble_address = config.get("ble_address")
-    ble_name = config["ble_name"]
-    service_uuid = config["ble_service_uuid"]
-    rx_uuid = config["ble_rx_uuid"]
+    ble_name = (config.get("ble_name") or "").strip()
 
     if ble_address:
         device = await asyncio.wait_for(
             BleakScanner.find_device_by_address(ble_address, timeout=timeout),
             timeout=timeout + 2,
         )
-        if device is None and config.get("ble_name"):
-            ble_address = None
-    else:
+        if device is not None:
+            return device
+
+    if ble_name:
         def match_name(device, advertisement_data):
             local_name = (advertisement_data.local_name or "").strip()
             name = (device.name or "").strip()
             return ble_name in {local_name, name}
 
-        device = await asyncio.wait_for(
+        return await asyncio.wait_for(
             BleakScanner.find_device_by_filter(match_name, timeout=timeout),
             timeout=timeout + 2,
         )
 
+    return None
+
+
+def _build_ble_client(BleakClient, device, timeout: float, service_uuid: str):
+    kwargs = {"timeout": timeout}
+    if not _is_windows():
+        kwargs["services"] = [service_uuid]
+    return BleakClient(device, **kwargs)
+
+
+async def _send_ble_once(command: str, config: dict, BleakClient, BleakScanner) -> str:
+    timeout = config["ble_timeout"]
+    service_uuid = config["ble_service_uuid"]
+    rx_uuid = config["ble_rx_uuid"]
+    device = await _find_ble_device(config, BleakScanner, timeout)
     if device is None:
-        target = ble_address or ble_name
+        target = config.get("ble_address") or config.get("ble_name") or "unknown"
         raise RuntimeError(f"Could not find BLE device: {target}")
 
-    client = BleakClient(device, timeout=timeout, services=[service_uuid])
+    client = _build_ble_client(BleakClient, device, timeout, service_uuid)
     await asyncio.wait_for(client.connect(), timeout=timeout + 2)
     try:
         await asyncio.sleep(BLE_CONNECT_SETTLE_SECONDS)
@@ -146,6 +158,25 @@ async def _send_ble_async(command: str, config: dict) -> str:
             await client.disconnect()
     save_ble_cache(device.address)
     return f"ble:{device.address}"
+
+
+async def _send_ble_async(command: str, config: dict) -> str:
+    try:
+        from bleak import BleakClient, BleakScanner
+    except ImportError as exc:
+        raise RuntimeError(
+            "BLE transport requires bleak. Install requirements with a Python environment that supports CoreBluetooth."
+        ) from exc
+
+    last_exc = None
+    for attempt, delay in enumerate(BLE_RETRY_DELAYS, start=1):
+        if delay > 0:
+            await asyncio.sleep(delay)
+        try:
+            return await _send_ble_once(command, config, BleakClient, BleakScanner)
+        except Exception as exc:
+            last_exc = exc
+    raise RuntimeError(f"BLE send failed after {len(BLE_RETRY_DELAYS)} attempts: {last_exc}") from last_exc
 
 
 def send_ble(command: str, config: dict) -> str:

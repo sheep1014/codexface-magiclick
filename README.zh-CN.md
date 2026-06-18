@@ -182,6 +182,19 @@ python3 install_codex_hooks.py
 }
 ```
 
+Windows 下建议优先只填 `ble_name`，先不要直接抄 macOS 上看到的 BLE UUID。因为：
+
+- macOS/CoreBluetooth 常显示成一串 UUID
+- Windows/Bleak 扫描到的通常是 MAC 风格地址，例如 `24:EC:4A:1F:A0:06`
+- 本项目现在会先尝试 `ble_address`，失败后自动回退到 `ble_name` 扫描
+
+如果需要排查 Windows BLE，请优先检查：
+
+- 使用 Chrome / Edge
+- `~/.codex/hooks/codex_face_hook.log`
+- 先关闭网页管理页的蓝牙连接，避免和 Codex hooks 抢设备
+- 如果 Windows 上扫描到了正确地址，再把那个地址补回 `~/.codex-face.json`
+
 这个脚本会：
 
 - 把 `codex_face_hook.py` 复制到 `~/.codex/hooks/agent_face_hook.py`
