@@ -431,7 +431,7 @@
               </label>
             </div>
 
-            <p id="paletteModeHint" class="tiny">当前正在编辑 Idle 状态的颜色。颜色会实时更新预览，点“应用配色”后才会下发到设备。当前版本重启后会恢复默认色。</p>
+            <p id="paletteModeHint" class="tiny">当前正在编辑 Idle 状态的颜色。颜色会实时更新预览，点“应用配色”后会下发到设备，并在重启后自动保留。</p>
 
             <p class="tiny">
               蓝牙模式需要浏览器支持 `Web Bluetooth`，USB 模式需要支持 `Web Serial`。在 `http://127.0.0.1` 打开时两者都可用。
@@ -658,7 +658,7 @@
         [...paletteModeButtons.querySelectorAll("button")].forEach((button) => {
           button.classList.toggle("active", button.dataset.mode === paletteMode);
         });
-        paletteModeHint.textContent = `当前正在编辑 ${MODE_LABELS[paletteMode]} 状态的颜色。颜色会实时更新预览，点“应用配色”后才会下发到设备。当前版本重启后会恢复默认色。`;
+        paletteModeHint.textContent = `当前正在编辑 ${MODE_LABELS[paletteMode]} 状态的颜色。颜色会实时更新预览，点“应用配色”后会下发到设备，并在重启后自动保留。`;
       }
 
       function applyPalette(nextColors = {}, mode = paletteMode) {
@@ -758,22 +758,14 @@
         line(x, y, x + width, y + slope, renderColors.feature, 4);
       }
 
-      function drawFlatMouth(y, width = 18) {
-        line(64 - width / 2, y, 64 + width / 2, y, renderColors.feature, 3);
+      function drawRingEye(cx, cy, outer = 8, inner = 4) {
+        circle(cx, cy, outer, renderColors.feature);
+        circle(cx, cy, inner, renderColors.bg);
       }
 
-      function drawSmallMouth(y, mood = 0) {
-        if (mood > 0) {
-          line(56, y, 64, y + 2, renderColors.feature, 3);
-          line(64, y + 2, 72, y, renderColors.feature, 3);
-          return;
-        }
-        if (mood < 0) {
-          line(56, y + 2, 64, y, renderColors.feature, 3);
-          line(64, y, 72, y + 2, renderColors.feature, 3);
-          return;
-        }
-        drawFlatMouth(y, 14);
+      function drawCrossEye(x, y, size = 14) {
+        line(x, y, x + size, y + size, renderColors.feature, 3);
+        line(x + size, y, x, y + size, renderColors.feature, 3);
       }
 
       function drawSweat(x, y) {
@@ -783,9 +775,16 @@
       }
 
       function drawTitle() {
+        const title = {
+          idle: "IDLE",
+          working: "WORK",
+          attention: "WAIT",
+          blocked: "BLOCK",
+          off: "OFF",
+        }[currentMode] || "CODEX";
         ctx.fillStyle = renderColors.title;
         ctx.font = "8px monospace";
-        ctx.fillText("CODEX", 6, 12);
+        ctx.fillText(title, 6, 12);
       }
 
       function drawInfo() {
@@ -802,62 +801,57 @@
         const blink = [0, 1, 2, 3].includes(phase % 120);
         drawBackground(false);
         if (blink) {
-          drawClosedEye(25, 59 + bob, 17, 0);
-          drawClosedEye(86, 59 + bob, 17, 0);
-        } else {
-          drawEyeBar(25, 40 + bob);
-          drawEyeBar(91, 40 + bob);
+          drawClosedEye(24, 59 + bob, 17, 0);
+          drawClosedEye(87, 59 + bob, 17, 0);
+          return;
         }
-        drawSmallMouth(95 + bob, 0);
+        drawEyeBar(24, 41 + bob, 11, 26);
+        drawEyeBar(93, 41 + bob, 11, 26);
       }
 
       function drawWorking(phase) {
         const bob = Math.round(Math.sin(phase / 16) * 1);
-        const scan = phase % 6;
+        const scan = phase % 8;
         drawBackground(false);
-        drawEyeBar(22, 42 + bob, 10, 26);
-        drawEyeBar(96, 42 + bob, 10, 26);
-        rect(24 + scan, 49 + bob, 2, 8, renderColors.bg);
-        rect(98 - scan, 49 + bob, 2, 8, renderColors.bg);
-        drawFlatMouth(95 + bob, 12);
-        rect(46, 28, 18, 2, renderColors.accent);
-        rect(68, 28, 14, 2, renderColors.accent);
+        drawEyeBar(24, 43 + bob, 10, 26);
+        drawEyeBar(94, 43 + bob, 10, 26);
+        rect(26 + scan, 49 + bob, 2, 12, renderColors.bg);
+        rect(96 - scan, 49 + bob, 2, 12, renderColors.bg);
+        rect(48, 28, 14, 2, renderColors.accent);
+        rect(66, 28, 14, 2, renderColors.accent);
       }
 
       function drawAttention(phase) {
         const bob = Math.round(Math.sin(phase / 16) * 1);
         const pulse = phase % 20;
         drawBackground(false);
-        drawEyeBar(25, 42 + bob, 12, 27);
-        drawEyeBar(91, 42 + bob, 12, 27);
-        rect(58, 92 + bob, 12, 3, renderColors.feature);
+        drawRingEye(42, 58 + bob, 10, 5);
+        drawRingEye(86, 58 + bob, 10, 5);
         if (pulse < 10) {
-          rect(100, 32, 10, 10, renderColors.warn);
+          rect(96, 31, 10, 10, renderColors.warn);
         } else {
-          rect(103, 35, 4, 4, renderColors.warn);
+          rect(99, 34, 4, 4, renderColors.warn);
         }
       }
 
       function drawBlocked(phase) {
         const bob = Math.round(Math.sin(phase / 14) * 1);
         drawBackground(false);
-        drawEyeBar(25, 44 + bob, 12, 26);
-        drawEyeBar(91, 44 + bob, 12, 26);
-        drawSmallMouth(95 + bob, -1);
+        drawCrossEye(28, 48 + bob, 18);
+        drawCrossEye(82, 48 + bob, 18);
         if (phase % 24 < 15) {
-          drawSweat(107, 78 + (phase % 5));
+          drawSweat(97, 78 + (phase % 5));
         }
       }
 
       function drawOff(phase) {
         const drift = phase % 28;
         drawBackground(true);
-        drawClosedEye(25, 59, 17, 0);
-        drawClosedEye(86, 59, 17, 0);
-        drawFlatMouth(95, 8);
-        line(92, 27 - Math.floor(drift / 5), 102, 27 - Math.floor(drift / 5), renderColors.accent, 2);
-        line(102, 27 - Math.floor(drift / 5), 94, 35 - Math.floor(drift / 5), renderColors.accent, 2);
-        line(94, 35 - Math.floor(drift / 5), 104, 35 - Math.floor(drift / 5), renderColors.accent, 2);
+        drawClosedEye(32, 60, 15, 0);
+        drawClosedEye(81, 60, 15, 0);
+        line(90, 27 - Math.floor(drift / 5), 100, 27 - Math.floor(drift / 5), renderColors.accent, 2);
+        line(100, 27 - Math.floor(drift / 5), 92, 35 - Math.floor(drift / 5), renderColors.accent, 2);
+        line(92, 35 - Math.floor(drift / 5), 102, 35 - Math.floor(drift / 5), renderColors.accent, 2);
       }
 
       function renderFace() {

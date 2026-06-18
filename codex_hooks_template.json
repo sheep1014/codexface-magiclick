@@ -40,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "__PYTHON__ __HOOK__ idle",
+            "command": "__PYTHON__ __HOOK__ working",
             "timeout": 12
           }
         ],

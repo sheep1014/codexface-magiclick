@@ -8,6 +8,7 @@ import terminalio
 from adafruit_display_text import label
 from magiclick import MagiClick
 from mochi_gesture import FlipExit
+import microcontroller
 
 try:
     from adafruit_ble import BLERadio
@@ -72,6 +73,13 @@ display.root_group = group
 
 VALID_MODES = ("idle", "working", "attention", "blocked", "off")
 MODE_INDEX = {name: idx for idx, name in enumerate(VALID_MODES)}
+MODE_TITLES = {
+    "idle": "IDLE",
+    "working": "WORK",
+    "attention": "WAIT",
+    "blocked": "BLOCK",
+    "off": "OFF",
+}
 DEFAULT_MODE_THEMES = {
     "idle": dict(DEFAULT_THEME),
     "working": {
@@ -108,6 +116,9 @@ DEFAULT_MODE_THEMES = {
     },
 }
 mode_themes = {mode: dict(DEFAULT_MODE_THEMES[mode]) for mode in VALID_MODES}
+NVM_MAGIC = b"CFP2"
+NVM_CAPACITY = len(microcontroller.nvm)
+NVM_THEME_BYTES = len(VALID_MODES) * len(COLOR_KEYS) * 3
 
 current_mode = "idle"
 info_text = ""
@@ -166,6 +177,53 @@ def theme_for_mode(mode):
     return mode_themes["idle"]
 
 
+def serialize_mode_themes():
+    payload = bytearray()
+    for mode in VALID_MODES:
+        theme = theme_for_mode(mode)
+        for key in COLOR_KEYS:
+            color = int(theme[key]) & 0xFFFFFF
+            payload.append((color >> 16) & 0xFF)
+            payload.append((color >> 8) & 0xFF)
+            payload.append(color & 0xFF)
+    return bytes(payload)
+
+
+def save_mode_themes():
+    try:
+        encoded = serialize_mode_themes()
+        if len(NVM_MAGIC) + len(encoded) > NVM_CAPACITY:
+            return False
+        buffer = bytearray(NVM_CAPACITY)
+        buffer[: len(NVM_MAGIC)] = NVM_MAGIC
+        buffer[len(NVM_MAGIC) : len(NVM_MAGIC) + len(encoded)] = encoded
+        microcontroller.nvm[:] = buffer
+        return True
+    except Exception:
+        return False
+
+
+def load_mode_themes():
+    try:
+        raw = bytes(microcontroller.nvm)
+        if raw[: len(NVM_MAGIC)] != NVM_MAGIC:
+            return
+        payload = raw[len(NVM_MAGIC) : len(NVM_MAGIC) + NVM_THEME_BYTES]
+        if len(payload) != NVM_THEME_BYTES:
+            return
+        index = 0
+        for mode in VALID_MODES:
+            theme = theme_for_mode(mode)
+            for key in COLOR_KEYS:
+                red = payload[index]
+                green = payload[index + 1]
+                blue = payload[index + 2]
+                index += 3
+                theme[key] = (red << 16) | (green << 8) | blue
+    except Exception:
+        return
+
+
 def apply_theme(mode=None):
     theme = theme_for_mode(mode or current_mode)
     palette[BG] = theme["bg"]
@@ -186,6 +244,7 @@ def set_theme_value(name, color, mode=None):
     theme_for_mode(target_mode)[name] = color
     if target_mode == current_mode:
         apply_theme()
+    save_mode_themes()
     return True
 
 
@@ -195,6 +254,7 @@ def reset_theme(mode=None):
         theme_for_mode(target_mode)[key] = DEFAULT_MODE_THEMES[target_mode][key]
     if target_mode == current_mode:
         apply_theme()
+    save_mode_themes()
 
 
 def palette_line(mode=None):
@@ -221,6 +281,7 @@ def apply_palette_tokens(tokens, mode=None):
     if changed:
         if target_mode == current_mode:
             apply_theme()
+        save_mode_themes()
     return changed
 
 
@@ -305,19 +366,14 @@ def draw_closed_eye(x, y, width=16, slope=0):
     line(x, y, x + width, y + slope, FEATURE, 4)
 
 
-def draw_flat_mouth(y, width=18):
-    line(64 - width // 2, y, 64 + width // 2, y, FEATURE, 3)
+def draw_ring_eye(cx, cy, outer=8, inner=4):
+    circle(cx, cy, outer, FEATURE)
+    circle(cx, cy, inner, BG)
 
 
-def draw_small_mouth(y, mood=0):
-    if mood > 0:
-        line(56, y, 64, y + 2, FEATURE, 3)
-        line(64, y + 2, 72, y, FEATURE, 3)
-    elif mood < 0:
-        line(56, y + 2, 64, y, FEATURE, 3)
-        line(64, y, 72, y + 2, FEATURE, 3)
-    else:
-        draw_flat_mouth(y, 14)
+def draw_cross_eye(x, y, size=14):
+    line(x, y, x + size, y + size, FEATURE, 3)
+    line(x + size, y, x, y + size, FEATURE, 3)
 
 
 def draw_sweat(x, y):
@@ -328,62 +384,57 @@ def draw_sweat(x, y):
 
 def draw_idle(phase):
     bob = int(math.sin(phase / 18.0) * 1.0)
-    blink = phase % 120 in (0, 1, 2, 3)
     draw_background(phase)
+    blink = phase % 120 in (0, 1, 2, 3)
     if blink:
-        draw_closed_eye(25, 59 + bob, 17, 0)
-        draw_closed_eye(86, 59 + bob, 17, 0)
+        draw_closed_eye(24, 59 + bob, 17, 0)
+        draw_closed_eye(87, 59 + bob, 17, 0)
     else:
-        draw_eye_bar(25, 40 + bob)
-        draw_eye_bar(91, 40 + bob)
-    draw_small_mouth(95 + bob, 0)
+        draw_eye_bar(24, 41 + bob, 11, 26)
+        draw_eye_bar(93, 41 + bob, 11, 26)
 
 
 def draw_working(phase):
     bob = int(math.sin(phase / 16.0) * 1.0)
-    scan = phase % 6
+    scan = phase % 8
     draw_background(phase)
-    draw_eye_bar(22, 42 + bob, 10, 26)
-    draw_eye_bar(96, 42 + bob, 10, 26)
-    rect(24 + scan, 49 + bob, 2, 8, BG)
-    rect(98 - scan, 49 + bob, 2, 8, BG)
-    draw_flat_mouth(95 + bob, 12)
-    rect(46, 28, 18, 2, ACCENT)
-    rect(68, 28, 14, 2, ACCENT)
+    draw_eye_bar(24, 43 + bob, 10, 26)
+    draw_eye_bar(94, 43 + bob, 10, 26)
+    rect(26 + scan, 49 + bob, 2, 12, BG)
+    rect(96 - scan, 49 + bob, 2, 12, BG)
+    rect(48, 28, 14, 2, ACCENT)
+    rect(66, 28, 14, 2, ACCENT)
 
 
 def draw_attention(phase):
     bob = int(math.sin(phase / 16.0) * 1.0)
     pulse = phase % 20
     draw_background(phase)
-    draw_eye_bar(25, 42 + bob, 12, 27)
-    draw_eye_bar(91, 42 + bob, 12, 27)
-    rect(58, 92 + bob, 12, 3, FEATURE)
+    draw_ring_eye(42, 58 + bob, 10, 5)
+    draw_ring_eye(86, 58 + bob, 10, 5)
     if pulse < 10:
-        rect(100, 32, 10, 10, WARN)
+        rect(96, 31, 10, 10, WARN)
     else:
-        rect(103, 35, 4, 4, WARN)
+        rect(99, 34, 4, 4, WARN)
 
 
 def draw_blocked(phase):
     bob = int(math.sin(phase / 14.0) * 1.0)
     draw_background(phase)
-    draw_eye_bar(25, 44 + bob, 12, 26)
-    draw_eye_bar(91, 44 + bob, 12, 26)
-    draw_small_mouth(95 + bob, -1)
+    draw_cross_eye(28, 48 + bob, 18)
+    draw_cross_eye(82, 48 + bob, 18)
     if phase % 24 < 15:
-        draw_sweat(107, 78 + (phase % 5))
+        draw_sweat(97, 78 + (phase % 5))
 
 
 def draw_off(phase):
     draw_background(phase, dim=True)
     drift = phase % 28
-    draw_closed_eye(25, 59, 17, 0)
-    draw_closed_eye(86, 59, 17, 0)
-    draw_flat_mouth(95, 8)
-    line(92, 27 - drift // 5, 102, 27 - drift // 5, ACCENT, 2)
-    line(102, 27 - drift // 5, 94, 35 - drift // 5, ACCENT, 2)
-    line(94, 35 - drift // 5, 104, 35 - drift // 5, ACCENT, 2)
+    draw_closed_eye(32, 60, 15, 0)
+    draw_closed_eye(81, 60, 15, 0)
+    line(90, 27 - drift // 5, 100, 27 - drift // 5, ACCENT, 2)
+    line(100, 27 - drift // 5, 92, 35 - drift // 5, ACCENT, 2)
+    line(92, 35 - drift // 5, 102, 35 - drift // 5, ACCENT, 2)
 
 
 def draw_face(mode, phase):
@@ -400,7 +451,7 @@ def draw_face(mode, phase):
 
 
 def draw_scene(mode, phase):
-    title_label.text = "CODEX"
+    title_label.text = MODE_TITLES.get(mode, "CODEX")
     refresh_link_label()
     info_label.text = info_text
     draw_face(mode, phase)
@@ -582,6 +633,7 @@ def consume_ble_command():
             ble_buffer += char
 
 
+load_mode_themes()
 set_mode("idle")
 refresh_link_label()
 draw_scene(current_mode, frame)

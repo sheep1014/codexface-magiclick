@@ -17,6 +17,9 @@ DEFAULT_TRANSPORT = "auto"
 DEFAULT_BLE_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
 DEFAULT_BLE_RX_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
 CONFIG_PATH = Path.home() / ".codex-face.json"
+CACHE_PATH = Path.home() / ".codex-face.cache.json"
+BLE_CONNECT_SETTLE_SECONDS = 0.2
+BLE_POST_WRITE_SECONDS = 0.25
 
 
 class ConfigError(RuntimeError):
@@ -30,6 +33,12 @@ def load_config() -> dict:
             config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
             raise ConfigError(f"Invalid config file {CONFIG_PATH}: {exc}") from exc
+    cache = {}
+    if CACHE_PATH.exists():
+        try:
+            cache = json.loads(CACHE_PATH.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            cache = {}
 
     serial_port = (
         os.environ.get("CODEX_FACE_PORT")
@@ -41,7 +50,7 @@ def load_config() -> dict:
         "transport": (os.environ.get("CODEX_FACE_TRANSPORT") or config.get("transport") or DEFAULT_TRANSPORT).lower(),
         "serial_port": serial_port,
         "ble_name": os.environ.get("CODEX_FACE_BLE_NAME") or config.get("ble_name") or DEFAULT_BLE_NAME,
-        "ble_address": os.environ.get("CODEX_FACE_BLE_ADDRESS") or config.get("ble_address"),
+        "ble_address": os.environ.get("CODEX_FACE_BLE_ADDRESS") or config.get("ble_address") or cache.get("ble_address"),
         "ble_service_uuid": (
             os.environ.get("CODEX_FACE_BLE_SERVICE_UUID")
             or config.get("ble_service_uuid")
@@ -54,6 +63,15 @@ def load_config() -> dict:
         ).lower(),
         "ble_timeout": float(os.environ.get("CODEX_FACE_BLE_TIMEOUT") or config.get("ble_timeout") or DEFAULT_TIMEOUT),
     }
+
+
+def save_ble_cache(address: str) -> None:
+    if not address:
+        return
+    try:
+        CACHE_PATH.write_text(json.dumps({"ble_address": address}) + "\n", encoding="utf-8")
+    except Exception:
+        pass
 
 
 def find_serial_port(config: dict) -> str:
@@ -99,6 +117,8 @@ async def _send_ble_async(command: str, config: dict) -> str:
             BleakScanner.find_device_by_address(ble_address, timeout=timeout),
             timeout=timeout + 2,
         )
+        if device is None and config.get("ble_name"):
+            ble_address = None
     else:
         def match_name(device, advertisement_data):
             local_name = (advertisement_data.local_name or "").strip()
@@ -117,14 +137,14 @@ async def _send_ble_async(command: str, config: dict) -> str:
     client = BleakClient(device, timeout=timeout, services=[service_uuid])
     await asyncio.wait_for(client.connect(), timeout=timeout + 2)
     try:
+        await asyncio.sleep(BLE_CONNECT_SETTLE_SECONDS)
         payload = (command + "\n").encode("utf-8")
-        try:
-            await client.write_gatt_char(rx_uuid, payload, response=False)
-        except Exception:
-            await client.write_gatt_char(rx_uuid, payload, response=True)
+        await client.write_gatt_char(rx_uuid, payload, response=True)
+        await asyncio.sleep(BLE_POST_WRITE_SECONDS)
     finally:
         if client.is_connected:
             await client.disconnect()
+    save_ble_cache(device.address)
     return f"ble:{device.address}"
 
 
